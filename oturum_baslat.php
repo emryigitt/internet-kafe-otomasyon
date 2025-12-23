@@ -16,12 +16,24 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
+// ✅ güvenli dönüş hedefi (whitelist)
+function resolveReturnTo(?string $rt): string {
+    $allowed = ['dashboard.php', 'oturumlar.php'];
+    $rt = trim((string)$rt);
+    if ($rt === '') return 'dashboard.php';
+    $rt = basename($rt);
+    return in_array($rt, $allowed, true) ? $rt : 'dashboard.php';
+}
+
+$returnTo = resolveReturnTo($_POST['return_to'] ?? null);
+
 $musteri_id    = !empty($_POST['musteri_id']) ? (int)$_POST['musteri_id'] : null;
 $bilgisayar_id = (int)($_POST['bilgisayar_id'] ?? 0);
 $tarife_id     = (int)($_POST['tarife_id'] ?? 0);
 
 if (!$bilgisayar_id || !$tarife_id) {
-    header("Location: dashboard.php");
+    $_SESSION['flash_error'] = "Bilgisayar ve tarife seçmelisin.";
+    header("Location: " . $returnTo);
     exit;
 }
 
@@ -49,7 +61,8 @@ try {
     $pc = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$pc || (int)$pc['aktif_mi'] !== 1 || ($pc['durum'] ?? '') !== 'boş') {
-        header("Location: dashboard.php");
+        $_SESSION['flash_error'] = "Bilgisayar müsait değil (boş/aktif değil).";
+        header("Location: " . $returnTo);
         exit;
     }
 
@@ -62,7 +75,8 @@ try {
     $tarife = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$tarife) {
-        header("Location: dashboard.php");
+        $_SESSION['flash_error'] = "Tarife bulunamadı veya aktif değil.";
+        header("Location: " . $returnTo);
         exit;
     }
 
@@ -70,13 +84,15 @@ try {
 
     // ✅ VIP Oda -> sadece VIP tarife
     if ($isVipRoom && !$isVipTarife) {
-        header("Location: dashboard.php");
+        $_SESSION['flash_error'] = "VIP oda için sadece VIP tarifeler seçilebilir.";
+        header("Location: " . $returnTo);
         exit;
     }
 
     // ✅ VIP değil -> VIP tarife seçilemesin
     if (!$isVipRoom && $isVipTarife) {
-        header("Location: dashboard.php");
+        $_SESSION['flash_error'] = "VIP tarife sadece VIP oda bilgisayarlarında seçilebilir.";
+        header("Location: " . $returnTo);
         exit;
     }
 
@@ -103,11 +119,15 @@ try {
 
     $conn->commit();
 
+    $_SESSION['flash_success'] = "Oturum başarıyla başlatıldı.";
+
 } catch (PDOException $e) {
     if ($conn->inTransaction()) $conn->rollBack();
+    $_SESSION['flash_error'] = "Oturum başlatılırken hata oluştu.";
 }
 
-header("Location: dashboard.php");
+header("Location: " . $returnTo);
 exit;
+
 
 
